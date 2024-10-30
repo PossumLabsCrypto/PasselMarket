@@ -7,6 +7,7 @@ import {PasselNFT} from "src/PasselNFT.sol";
 contract DeployPasselNFT is Script {
     string _name = "Possum Passel";
     string _symbol = "Passel";
+    address nftMinter = 0xbFF0b8CcD7ebA169107bbE72426dB370407C8f2D;
 
     function setUp() public {}
 
@@ -18,7 +19,7 @@ contract DeployPasselNFT is Script {
         vm.store(address(this), bytes32("optimizerRuns"), bytes32(uint256(1000)));
 
         // deploy the NFT contract
-        PasselNFT passelNFT = new PasselNFT(_name, _symbol);
+        PasselNFT passelNFT = new PasselNFT(_name, _symbol, nftMinter);
         deployedAddress = address(passelNFT);
 
         vm.stopBroadcast();

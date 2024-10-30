@@ -15,8 +15,8 @@ error MintingDisabled();
 /// @author Possum Labs
 /// @notice The on-chain anniversary collection by Possum Labs
 contract PasselNFT is ERC721URIStorage {
-    constructor(string memory _name, string memory _symbol) ERC721(_name, _symbol) {
-        minter = tx.origin;
+    constructor(string memory _name, string memory _symbol, address _minter) ERC721(_name, _symbol) {
+        minter = _minter;
     }
 
     // ===================================
@@ -33,7 +33,7 @@ contract PasselNFT is ERC721URIStorage {
     // ===================================
     ///@notice Enable the minter to mint NFTs up to the minting cap
     function mint(address _recipient, string memory metadataURI) external returns (uint256 nftID) {
-        if (tx.origin != minter) revert NotMinter(); // Enable batch minting via script contract while checking for correct minter EOA
+        if (msg.sender != minter) revert NotMinter();
         if (mintingDisabled == true) revert MintingDisabled();
 
         _safeMint(_recipient, totalSupply);

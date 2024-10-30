@@ -22,7 +22,7 @@ contract PasselQuests {
     // ===================================
     //    VARIABLES
     // ===================================
-    address public immutable PASSEL_EXPLORER;
+    address public immutable PASSEL_EXPLORER; // The explorer contract users interface with to level up their NFTs
 
     uint256 public constant QUESTS_AVAILABLE = 7;
     mapping(uint256 nftID => uint256[] quests) public completedQuests;

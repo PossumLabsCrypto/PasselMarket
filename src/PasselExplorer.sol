@@ -22,11 +22,10 @@ error NullAddress();
  * The controller can change the psmReceiver and can revoke the controller
  */
 contract PasselExplorer {
-    constructor(address _passelNFT, address _passelQuests) {
+    constructor(address _passelNFT, address _controller) {
         PASSEL_NFT = IERC721(_passelNFT);
-        controller = 0xAb845D09933f52af5642FC87Dd8FBbf553fd7B33; // PSM MULTI-SIG (ARBITRUM)
+        controller = _controller;
         psmReceiver = controller;
-        passelQuests = _passelQuests;
     }
 
     // ===================================
@@ -67,14 +66,14 @@ contract PasselExplorer {
     }
 
     /// @dev Allow the controller to change the address that receives PSM from Experience purchases
-    function changePsmReceiver(address _newReceiver) external onlyController {
+    function setPsmReceiver(address _newReceiver) external onlyController {
         if (_newReceiver == address(0)) revert NullAddress();
         psmReceiver = _newReceiver;
     }
 
     /// @dev Allow the controller to change the quest contract
     /// @dev Completing quests can increase the Exploration Score of a Passel NFT up to the hard cap
-    function changePasselQuests(address _newQuests) external onlyController {
+    function setPasselQuests(address _newQuests) external onlyController {
         if (_newQuests == address(0)) revert NullAddress();
         passelQuests = _newQuests;
     }
