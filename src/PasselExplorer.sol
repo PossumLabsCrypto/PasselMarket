@@ -11,21 +11,23 @@ import {IPasselQuests} from "./interfaces/IPasselQuests.sol";
 error NotController();
 error IsRevoked();
 error NullAddress();
+error InvalidNFT();
 
 /// @title Storage contract for information related to Passel NFTs for the purpose of on-chain governance
 /// @author Possum Labs
 /**
  * @notice This contract calculates and stores voting related information of Passel NFTs
  * Users can solve on-chain quests to increase the Exploration Score of a specific Passel NFT
- * Users can pay PSM to receive Experience to a specific Passel NFT
- * The PSM used to buy Experience is directed to the psmReceiver
- * The controller can change the psmReceiver and can revoke the controller
+ * Users can purchase Experience points for a specific Passel NFT using PSM
+ * The PSM spent to buy Experience is directed to the psmReceiver
+ * The manager can change the psmReceiver and the contract containing the Quests
+ * The manager can revoke management rights but not transfer them. Management is supposed to be temporary.
  */
 contract PasselExplorer {
-    constructor(address _passelNFT, address _controller) {
+    constructor(address _passelNFT, address _manager) {
         PASSEL_NFT = IERC721(_passelNFT);
-        controller = _controller;
-        psmReceiver = controller;
+        manager = _manager;
+        psmReceiver = _manager;
     }
 
     // ===================================
@@ -35,7 +37,7 @@ contract PasselExplorer {
     IERC721 private immutable PASSEL_NFT;
     uint256 private constant MAX_EXPLORATION_SCORE = 10;
 
-    address public controller;
+    address public manager;
     address public psmReceiver;
     address public passelQuests;
 
@@ -45,35 +47,35 @@ contract PasselExplorer {
     // ===================================
     //    EVENTS
     // ===================================
+    event EXP_Purchased(uint256 indexed nftID, uint256 amount);
 
     // ===================================
     //    MODIFIERS
     // ===================================
-    modifier onlyController() {
-        if (msg.sender != controller) {
+    modifier onlyManager() {
+        if (msg.sender != manager) {
             revert NotController();
         }
         _;
     }
 
     // ===================================
-    //    FUNCTIONS - controller
+    //    FUNCTIONS - manager
     // ===================================
     /// @dev Revokes control & lock in current settings forever
-    function revokeController() external onlyController {
-        if (controller == address(0)) revert IsRevoked();
-        controller = address(0);
+    function revokeManager() external onlyManager {
+        manager = address(0);
     }
 
     /// @dev Allow the controller to change the address that receives PSM from Experience purchases
-    function setPsmReceiver(address _newReceiver) external onlyController {
+    function setPsmReceiver(address _newReceiver) external onlyManager {
         if (_newReceiver == address(0)) revert NullAddress();
         psmReceiver = _newReceiver;
     }
 
     /// @dev Allow the controller to change the quest contract
     /// @dev Completing quests can increase the Exploration Score of a Passel NFT up to the hard cap
-    function setPasselQuests(address _newQuests) external onlyController {
+    function setPasselQuests(address _newQuests) external onlyManager {
         if (_newQuests == address(0)) revert NullAddress();
         passelQuests = _newQuests;
     }
@@ -82,7 +84,22 @@ contract PasselExplorer {
     //    FUNCTIONS - users
     // ===================================
     /// @notice Caller can buy experience for any Passel NFT with PSM where 1 PSM = 1 Experience
-    function buyExperience(uint256 _nftID, uint256 _amount) external {}
+    function buyExperience(uint256 _nftID, uint256 _amount) external {
+        // Checks
+        /// @dev Check if the NFT receiving the EXP exists
+        if (PASSEL_NFT.ownerOf(_nftID) == address(0)) revert InvalidNFT();
+
+        // Effects
+        /// @dev Add the purchased Experience to the mapping related to the NFT
+        getExperience[_nftID] = getExperience[_nftID] + _amount;
+
+        // Interactions
+        /// @dev Transfer PSM from the buyer to the psmReceiver
+        PSM.transferFrom(msg.sender, psmReceiver, _amount);
+
+        /// @dev Emit event that Experience has been purchased for a specific NFT
+        emit EXP_Purchased(_nftID, _amount);
+    }
 
     /// @notice Caller can complete a quest for any Passel NFT to increase the NFT's Exploration Score
     function doQuest(uint256 _nftID, uint256 _questID) external {}
