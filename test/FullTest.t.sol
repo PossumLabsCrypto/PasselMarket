@@ -26,9 +26,10 @@ error NotListedForSale();
 error CallerIsOwner();
 error PriceMismatch();
 
-error NotController();
+error NotManager();
 error IsRevoked();
 error NullAddress();
+error InvalidNFT();
 
 error questComplete();
 error NotPasselExplorer();
@@ -108,15 +109,18 @@ contract FullTest is Test {
     }
 
     function helper_mintNFT_toAlice() public {
-        vm.startPrank(nftMinter);
+        vm.prank(nftMinter);
         passelNFT.mint(Alice, "g34zwg435u65");
-        vm.stopPrank();
     }
 
     function helper_mintNFT_toBob() public {
-        vm.startPrank(nftMinter);
+        vm.prank(nftMinter);
         passelNFT.mint(Bob, "g34zwg435u65");
-        vm.stopPrank();
+    }
+
+    function helper_revokeManager() public {
+        vm.prank(psmSender);
+        passelExplorer.revokeManager();
     }
 
     //////////////////////////////////////
@@ -394,13 +398,106 @@ contract FullTest is Test {
     //////////////////////////////////////
     /////// TESTS - Explorer & Quests
     //////////////////////////////////////
+    function testSuccess_revokeManager() public {
+        assertEq(passelExplorer.manager(), psmSender);
+
+        vm.prank(psmSender);
+        passelExplorer.revokeManager();
+
+        assertEq(passelExplorer.manager(), address(0));
+    }
+
+    function testRevert_revokeManager() public {
+        assertEq(passelExplorer.manager(), psmSender);
+
+        // Scenario 1: Caller is not Manager
+        vm.startPrank(Alice);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.revokeManager();
+        vm.stopPrank();
+
+        // Scenario 2: Manager was revoked
+        helper_revokeManager();
+
+        vm.startPrank(psmSender);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.revokeManager();
+    }
+
+    function testSuccess_setPsmReceiver() public {
+        assertEq(passelExplorer.psmReceiver(), psmSender);
+
+        vm.prank(psmSender);
+        passelExplorer.setPsmReceiver(Alice);
+
+        assertEq(passelExplorer.psmReceiver(), Alice);
+
+        vm.prank(psmSender);
+        passelExplorer.setPsmReceiver(Bob);
+
+        assertEq(passelExplorer.psmReceiver(), Bob);
+    }
+
+    function testRevert_setPsmReceiver() public {
+        assertEq(passelExplorer.psmReceiver(), psmSender);
+
+        // Scenario 1: Caller is not authorized
+        vm.startPrank(Alice);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.setPsmReceiver(Alice);
+        vm.stopPrank();
+
+        // Scenario 2: new receiver is address(0)
+        vm.startPrank(psmSender);
+        vm.expectRevert(NullAddress.selector);
+        passelExplorer.setPsmReceiver(address(0));
+        vm.stopPrank();
+
+        // Scenario 3: Manager was revoked already (not authorized)
+        helper_revokeManager();
+        vm.startPrank(psmSender);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.setPsmReceiver(Bob);
+        vm.stopPrank();
+
+        assertEq(passelExplorer.psmReceiver(), psmSender);
+    }
+
+    function testSuccess_setPasselQuests() public {
+        assertEq(passelExplorer.passelQuests(), address(0));
+
+        vm.prank(psmSender);
+        passelExplorer.setPasselQuests(Alice);
+
+        assertEq(passelExplorer.passelQuests(), Alice);
+
+        vm.prank(psmSender);
+        passelExplorer.setPasselQuests(address(0));
+
+        assertEq(passelExplorer.passelQuests(), address(0));
+    }
+
+    function testRevert_setPasselQuests() public {
+        assertEq(passelExplorer.passelQuests(), address(0));
+
+        // Scenario 1: Caller is not authorized
+        vm.startPrank(Alice);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.setPasselQuests(Alice);
+        vm.stopPrank();
+
+        // Scenario 2: Manager was revoked
+        helper_revokeManager();
+
+        vm.startPrank(psmSender);
+        vm.expectRevert(NotManager.selector);
+        passelExplorer.setPasselQuests(Alice);
+        vm.stopPrank();
+
+        assertEq(passelExplorer.passelQuests(), address(0));
+    }
+
     function testSuccess_buyExperience() public {}
 
     function testSuccess_doQuest() public {}
-
-    function testSuccess_setPsmReceiver() public {}
-
-    function testSuccess_setPasselQuests() public {}
-
-    function testSuccess_revokeController() public {}
 }

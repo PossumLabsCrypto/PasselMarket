@@ -8,7 +8,7 @@ import {IPasselQuests} from "./interfaces/IPasselQuests.sol";
 // ===================================
 //    ERRORS
 // ===================================
-error NotController();
+error NotManager();
 error IsRevoked();
 error NullAddress();
 error InvalidNFT();
@@ -54,7 +54,7 @@ contract PasselExplorer {
     // ===================================
     modifier onlyManager() {
         if (msg.sender != manager) {
-            revert NotController();
+            revert NotManager();
         }
         _;
     }
@@ -62,7 +62,7 @@ contract PasselExplorer {
     // ===================================
     //    FUNCTIONS - manager
     // ===================================
-    /// @dev Revokes control & lock in current settings forever
+    /// @dev Revoke management rights & lock in current settings forever
     function revokeManager() external onlyManager {
         manager = address(0);
     }
@@ -73,10 +73,9 @@ contract PasselExplorer {
         psmReceiver = _newReceiver;
     }
 
-    /// @dev Allow the controller to change the quest contract
+    /// @dev Allow the controller to change the quest contract. Set address(0) to disable quests.
     /// @dev Completing quests can increase the Exploration Score of a Passel NFT up to the hard cap
     function setPasselQuests(address _newQuests) external onlyManager {
-        if (_newQuests == address(0)) revert NullAddress();
         passelQuests = _newQuests;
     }
 
