@@ -11,6 +11,7 @@ import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Hol
 error NotOwnerOfNFT();
 error NotListedForSale();
 error CallerIsOwner();
+error PriceMismatch();
 
 /// @title Custom NFT Marketplace for the Possum Passel Collection
 /// @author Possum Labs
@@ -61,10 +62,17 @@ contract PasselMarket is ERC721Holder {
 
         // Effects
         /// @dev Update the NFT listing status & ownership information
+        /// @dev if NFT gets delisted, reset other related information to default values
         /// @dev Only update if values change to save gas
-        if (_getListed != isListedForSale[_tokenID]) isListedForSale[_tokenID] = _getListed;
-        if (_price != listingPrices[_tokenID]) listingPrices[_tokenID] = _price;
-        if (msg.sender != ownedBy[_tokenID]) ownedBy[_tokenID] = msg.sender;
+        if (_getListed == false) {
+            isListedForSale[_tokenID] = false;
+            listingPrices[_tokenID] = 0;
+            ownedBy[_tokenID] = address(0);
+        } else {
+            if (_getListed != isListedForSale[_tokenID]) isListedForSale[_tokenID] = _getListed;
+            if (_price != listingPrices[_tokenID]) listingPrices[_tokenID] = _price;
+            if (msg.sender != ownedBy[_tokenID]) ownedBy[_tokenID] = msg.sender;
+        }
 
         // Interactions
         /// @dev Transfer the NFT from the marketplace back to the original owner if delisted
@@ -83,7 +91,7 @@ contract PasselMarket is ERC721Holder {
     /// @notice Pay the listing price of a specific Passel NFT ID and receive the NFT
     /// @dev Transfer PSM from the buyer to the seller & the NFT from the marketplace to the buyer
     /// @dev Delete listing information of the purchased NFT
-    function buyNFT(uint256 _tokenID) external {
+    function buyNFT(uint256 _tokenID, uint256 maxSpend) external {
         // Checks
         /// @dev Ensure that the NFT ID is listed for sale
         if (isListedForSale[_tokenID] == false) revert NotListedForSale();
@@ -91,11 +99,14 @@ contract PasselMarket is ERC721Holder {
         /// @dev Prevent caller from buying their own NFT
         if (msg.sender == ownedBy[_tokenID]) revert CallerIsOwner();
 
-        // Effects
         /// @dev Get the amount of PSM to pay & recipient of payment (seller)
         uint256 price = listingPrices[_tokenID];
         address seller = ownedBy[_tokenID];
 
+        /// @dev Check for maxSpend to protect buyer from bait and switch price change and frontrunning (MEV)
+        if (price > maxSpend) revert PriceMismatch();
+
+        // Effects
         /// @dev delete the listing information of the NFT ID
         isListedForSale[_tokenID] = false;
         listingPrices[_tokenID] = 0;
@@ -103,8 +114,9 @@ contract PasselMarket is ERC721Holder {
 
         // Interactions
         /// @dev Transfer the PSM price from the buyer directly to the seller
-        /// @dev Transfer the NFT from the marketplace to the buyer
         PSM.transferFrom(msg.sender, seller, price);
+
+        /// @dev Transfer the NFT from the marketplace to the buyer
         PASSEL_NFT.safeTransferFrom(address(this), msg.sender, _tokenID);
 
         /// @dev Emit Event that an NFT purchase was executed

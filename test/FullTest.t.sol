@@ -24,6 +24,7 @@ error MintingDisabled();
 error NotOwnerOfNFT();
 error NotListedForSale();
 error CallerIsOwner();
+error PriceMismatch();
 
 error NotController();
 error IsRevoked();
@@ -37,7 +38,7 @@ contract FullTest is Test {
 
     // prank addresses
     address payable Alice = payable(0x46340b20830761efd32832A74d7169B29FEB9758);
-    address payable Bob = payable(0xDD56CFdDB0002f4d7f8CC0563FD489971899cb79);
+    address payable Bob = payable(0x490b1E689Ca23be864e55B46bf038e007b528208);
     address payable Karen = payable(0x3A30aaf1189E830b02416fb8C513373C659ed748);
 
     // Token Instances
@@ -106,6 +107,18 @@ contract FullTest is Test {
         vm.stopPrank();
     }
 
+    function helper_mintNFT_toAlice() public {
+        vm.startPrank(nftMinter);
+        passelNFT.mint(Alice, "g34zwg435u65");
+        vm.stopPrank();
+    }
+
+    function helper_mintNFT_toBob() public {
+        vm.startPrank(nftMinter);
+        passelNFT.mint(Bob, "g34zwg435u65");
+        vm.stopPrank();
+    }
+
     //////////////////////////////////////
     /////// TESTS - Mint NFTs
     //////////////////////////////////////
@@ -150,11 +163,128 @@ contract FullTest is Test {
     //////////////////////////////////////
     /////// TESTS - Marketplace
     //////////////////////////////////////
-    function testSuccess_listNFT() public {}
+    function testSuccess_updateListing() public {
+        helper_mintNFT_toAlice();
 
-    function testSuccess_delistNFT() public {}
+        // check for correct initial state
+        assertEq(passelNFT.totalSupply(), 1);
+        assertEq(passelNFT.ownerOf(0), Alice);
 
-    function testSuccess_buyNFT() public {}
+        assertFalse(passelMarket.isListedForSale(0));
+        assertEq(passelMarket.listingPrices(0), 0);
+        assertEq(passelMarket.ownedBy(0), address(0));
+
+        // Scenario 1: Alice lists her NFT for sale for the first time
+        uint256 tokenID = 0;
+        uint256 listingPrice = 2345;
+        bool getListed = true;
+
+        vm.startPrank(Alice);
+
+        IERC721(address(passelNFT)).approve(address(passelMarket), tokenID);
+        passelMarket.updateListing(tokenID, listingPrice, getListed);
+
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        assertEq(passelNFT.ownerOf(tokenID), address(passelMarket));
+        assertTrue(passelMarket.isListedForSale(tokenID));
+        assertEq(passelMarket.listingPrices(tokenID), listingPrice);
+        assertEq(passelMarket.ownedBy(tokenID), Alice);
+
+        // Scenario 2: Alice changes the price of her listed NFT
+        uint256 listingPrice_NEW = 876543234567;
+
+        vm.startPrank(Alice);
+
+        passelMarket.updateListing(tokenID, listingPrice_NEW, getListed);
+
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        assertEq(passelNFT.ownerOf(tokenID), address(passelMarket));
+        assertTrue(passelMarket.isListedForSale(tokenID));
+        assertEq(passelMarket.listingPrices(tokenID), listingPrice_NEW);
+        assertEq(passelMarket.ownedBy(tokenID), Alice);
+
+        // Scenario 3: Alice delists her listed NFT
+        bool getListed_NEW = false;
+
+        vm.startPrank(Alice);
+
+        passelMarket.updateListing(tokenID, listingPrice_NEW, getListed_NEW);
+
+        vm.stopPrank();
+
+        // verify state changes of Scenario 3
+        assertEq(passelNFT.ownerOf(tokenID), Alice);
+        assertFalse(passelMarket.isListedForSale(tokenID));
+        assertEq(passelMarket.listingPrices(tokenID), 0);
+        assertEq(passelMarket.ownedBy(tokenID), address(0));
+    }
+
+    function testRevert_updateListing() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+
+        // Scenario 1: Alice owns ID 0 & 1, lists ID 0 for sale, Bob tries to change listing price of Alice's NFT (not owner)
+        uint256 tokenID_listed_Alice = 0;
+        uint256 listingPrice_Alice = 2345;
+        bool getListed_Alice = true;
+
+        vm.startPrank(Alice);
+
+        IERC721(address(passelNFT)).approve(address(passelMarket), tokenID_listed_Alice);
+        passelMarket.updateListing(tokenID_listed_Alice, listingPrice_Alice, getListed_Alice);
+
+        vm.stopPrank();
+
+        uint256 listingPrice_manipulatedByBob = 99999999999;
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(NotOwnerOfNFT.selector);
+        passelMarket.updateListing(tokenID_listed_Alice, listingPrice_manipulatedByBob, getListed_Alice);
+
+        vm.stopPrank();
+
+        // Scenario 2: Bob tries to list Alice's other NFT for sale (not owner)
+        uint256 tokenID_tryToList_ownedByAlice = 1;
+        uint256 listingPrice_Bob = 876543456789;
+        bool getListed_Bob = true;
+
+        vm.startPrank(Bob);
+
+        IERC721(address(passelNFT)).setApprovalForAll(address(passelMarket), true);
+
+        vm.expectRevert(NotOwnerOfNFT.selector);
+        passelMarket.updateListing(tokenID_tryToList_ownedByAlice, listingPrice_Bob, getListed_Bob);
+
+        vm.stopPrank();
+    }
+
+    function testSuccess_buyNFT() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+
+        // Scenario 1: Alice lists NFT IDs 0 and 1 for sale, Bob purchases NFT ID 0
+
+        // Scenario 2: Bob lists NFT IDs 0 and 2 for sale, Alice purchases both
+    }
+
+    function testRevert_buyNFT() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+
+        // Scenario 1: Alice lists NFT IDs 0 and 1 for sale, Bob purchases NFT ID 0 then tries to purchase ID 0 again (not listed)
+
+        // Scenario 2: Bob tries to purchase ID 2 (his own NFT)
+
+        // Scenario 2: Bob tries to purchase ID 1 but fails because maxSpend is set too low
+    }
 
     //////////////////////////////////////
     /////// TESTS - Explorer & Quests
