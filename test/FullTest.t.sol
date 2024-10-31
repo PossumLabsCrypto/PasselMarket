@@ -270,8 +270,75 @@ contract FullTest is Test {
         helper_mintNFT_toBob(); // ID 2
 
         // Scenario 1: Alice lists NFT IDs 0 and 1 for sale, Bob purchases NFT ID 0
+        uint256 tokenID_Alice_1 = 0;
+        uint256 tokenID_Alice_2 = 1;
+        uint256 tokenID_Bob = 2;
+        uint256 listingPrice = 2345;
+        bool getListed = true;
 
-        // Scenario 2: Bob lists NFT IDs 0 and 2 for sale, Alice purchases both
+        vm.startPrank(Alice);
+
+        IERC721(address(passelNFT)).setApprovalForAll(address(passelMarket), true);
+        passelMarket.updateListing(tokenID_Alice_1, listingPrice, getListed);
+        passelMarket.updateListing(tokenID_Alice_2, listingPrice, getListed);
+
+        vm.stopPrank();
+
+        vm.startPrank(Bob);
+
+        psm.approve(address(passelMarket), 1e55);
+        passelMarket.buyNFT(tokenID_Alice_1, 1e24);
+
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        assertEq(passelNFT.ownerOf(tokenID_Alice_1), Bob);
+        assertEq(passelNFT.ownerOf(tokenID_Alice_2), address(passelMarket));
+        assertFalse(passelMarket.isListedForSale(tokenID_Alice_1));
+        assertTrue(passelMarket.isListedForSale(tokenID_Alice_2));
+        assertEq(passelMarket.listingPrices(tokenID_Alice_1), 0);
+        assertEq(passelMarket.listingPrices(tokenID_Alice_2), listingPrice);
+        assertEq(passelMarket.ownedBy(tokenID_Alice_1), address(0));
+        assertEq(passelMarket.ownedBy(tokenID_Alice_2), Alice);
+        assertEq(psm.balanceOf(Alice), psmStartAmount + listingPrice);
+        assertEq(psm.balanceOf(Bob), psmStartAmount - listingPrice);
+        assertEq(psm.balanceOf(Bob) + psm.balanceOf(Alice), 2 * psmStartAmount);
+
+        // Scenario 2: Bob lists NFT IDs 0 and 2 for sale, Alice purchases both and withdraws listing - all 3 in wallet
+
+        vm.startPrank(Bob);
+
+        IERC721(address(passelNFT)).setApprovalForAll(address(passelMarket), true);
+        passelMarket.updateListing(tokenID_Alice_1, listingPrice, getListed);
+        passelMarket.updateListing(tokenID_Bob, listingPrice, getListed);
+
+        vm.stopPrank();
+
+        vm.startPrank(Alice);
+
+        psm.approve(address(passelMarket), 1e55);
+        passelMarket.buyNFT(tokenID_Alice_1, 1e24);
+        passelMarket.buyNFT(tokenID_Bob, 1e24);
+        passelMarket.updateListing(tokenID_Alice_2, listingPrice, false);
+
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        assertEq(passelNFT.ownerOf(tokenID_Alice_1), Alice);
+        assertEq(passelNFT.ownerOf(tokenID_Alice_2), Alice);
+        assertEq(passelNFT.ownerOf(tokenID_Bob), Alice);
+        assertFalse(passelMarket.isListedForSale(tokenID_Alice_1));
+        assertFalse(passelMarket.isListedForSale(tokenID_Alice_2));
+        assertFalse(passelMarket.isListedForSale(tokenID_Bob));
+        assertEq(passelMarket.listingPrices(tokenID_Alice_1), 0);
+        assertEq(passelMarket.listingPrices(tokenID_Alice_2), 0);
+        assertEq(passelMarket.listingPrices(tokenID_Bob), 0);
+        assertEq(passelMarket.ownedBy(tokenID_Alice_1), address(0));
+        assertEq(passelMarket.ownedBy(tokenID_Alice_2), address(0));
+        assertEq(passelMarket.ownedBy(tokenID_Bob), address(0));
+        assertEq(psm.balanceOf(Alice), psmStartAmount - listingPrice);
+        assertEq(psm.balanceOf(Bob), psmStartAmount + listingPrice);
+        assertEq(psm.balanceOf(Bob) + psm.balanceOf(Alice), 2 * psmStartAmount);
     }
 
     function testRevert_buyNFT() public {
@@ -280,10 +347,48 @@ contract FullTest is Test {
         helper_mintNFT_toBob(); // ID 2
 
         // Scenario 1: Alice lists NFT IDs 0 and 1 for sale, Bob purchases NFT ID 0 then tries to purchase ID 0 again (not listed)
+        uint256 tokenID_Alice_1 = 0;
+        uint256 tokenID_Alice_2 = 1;
+        uint256 tokenID_Bob = 2;
+        uint256 listingPrice = 2345;
+        bool getListed = true;
 
-        // Scenario 2: Bob tries to purchase ID 2 (his own NFT)
+        vm.startPrank(Alice);
 
-        // Scenario 2: Bob tries to purchase ID 1 but fails because maxSpend is set too low
+        IERC721(address(passelNFT)).setApprovalForAll(address(passelMarket), true);
+        passelMarket.updateListing(tokenID_Alice_1, listingPrice, getListed);
+        passelMarket.updateListing(tokenID_Alice_2, listingPrice, getListed);
+
+        vm.stopPrank();
+
+        vm.startPrank(Bob);
+
+        psm.approve(address(passelMarket), 1e55);
+        passelMarket.buyNFT(tokenID_Alice_1, 1e24);
+
+        vm.expectRevert(NotListedForSale.selector);
+        passelMarket.buyNFT(tokenID_Alice_1, 1e24);
+
+        vm.stopPrank();
+
+        // Scenario 2: Bob lists his NFT for sale and tries to purchase it (Caller Is Owner)
+        vm.startPrank(Bob);
+
+        IERC721(address(passelNFT)).setApprovalForAll(address(passelMarket), true);
+        passelMarket.updateListing(tokenID_Bob, listingPrice, getListed);
+
+        vm.expectRevert(CallerIsOwner.selector);
+        passelMarket.buyNFT(tokenID_Bob, 1e24);
+
+        vm.stopPrank();
+
+        // Scenario 3: Bob tries to purchase ID 1 but fails because maxSpend is set too low
+        vm.startPrank(Bob);
+
+        vm.expectRevert(PriceMismatch.selector);
+        passelMarket.buyNFT(tokenID_Alice_2, 1);
+
+        vm.stopPrank();
     }
 
     //////////////////////////////////////
