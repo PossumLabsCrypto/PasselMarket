@@ -11,6 +11,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 // ===================================
 //    ERRORS
 // ===================================
+error InvalidQuest();
 error QuestComplete();
 error NotPasselExplorer();
 error QuestCondition();
@@ -64,6 +65,9 @@ contract PasselQuests {
     /// @notice Execute or verify the quest condition, called by doQuest of the PasselExplorer
     function quest(address _user, uint256 _tokenID, uint256 _questID) external onlyExplorer returns (uint256 score) {
         // Checks
+        /// @dev Check that the questID is valid
+        if (_questID > QUESTS_AVAILABLE) revert InvalidQuest();
+
         ///@dev Revert if the quest is already completed for this NFT
         if (isQuestCompleted[_tokenID][_questID]) revert QuestComplete();
 

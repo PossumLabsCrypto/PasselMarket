@@ -12,7 +12,6 @@ error NotManager();
 error IsRevoked();
 error NullAddress();
 error InvalidNFT();
-error InvalidQuest();
 
 /// @title Storage contract for information related to Passel NFTs for the purpose of on-chain governance
 /// @author Possum Labs
@@ -107,9 +106,6 @@ contract PasselExplorer {
         // Checks
         /// @dev Check if the NFT receiving the Explorer Score exists
         if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) revert InvalidNFT();
-
-        /// @dev Check that the questID is valid
-        if (_questID > passelQuests.QUESTS_AVAILABLE()) revert InvalidQuest();
 
         address user = msg.sender;
         uint256 score;
