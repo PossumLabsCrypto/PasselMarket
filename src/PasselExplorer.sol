@@ -12,6 +12,7 @@ error NotManager();
 error IsRevoked();
 error NullAddress();
 error InvalidNFT();
+error InvalidQuest();
 
 /// @title Storage contract for information related to Passel NFTs for the purpose of on-chain governance
 /// @author Possum Labs
@@ -39,7 +40,7 @@ contract PasselExplorer {
 
     address public manager;
     address public psmReceiver;
-    address public passelQuests;
+    IPasselQuests public passelQuests;
 
     mapping(uint256 nftID => uint256 exp) public getExperience;
     mapping(uint256 nftID => uint256 score) public getExplorationScore;
@@ -76,30 +77,50 @@ contract PasselExplorer {
     /// @dev Allow the controller to change the quest contract. Set address(0) to disable quests.
     /// @dev Completing quests can increase the Exploration Score of a Passel NFT up to the hard cap
     function setPasselQuests(address _newQuests) external onlyManager {
-        passelQuests = _newQuests;
+        passelQuests = IPasselQuests(_newQuests);
     }
 
     // ===================================
     //    FUNCTIONS - users
     // ===================================
     /// @notice Caller can buy experience for any Passel NFT with PSM where 1 PSM = 1 Experience
-    function buyExperience(uint256 _nftID, uint256 _amount) external {
+    function buyExperience(uint256 _tokenID, uint256 _amount) external {
         // Checks
         /// @dev Check if the NFT receiving the EXP exists
-        if (PASSEL_NFT.ownerOf(_nftID) == address(0)) revert InvalidNFT();
+        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) revert InvalidNFT();
 
         // Effects
         /// @dev Add the purchased Experience to the mapping related to the NFT
-        getExperience[_nftID] = getExperience[_nftID] + _amount;
+        getExperience[_tokenID] = getExperience[_tokenID] + _amount;
 
         // Interactions
         /// @dev Transfer PSM from the buyer to the psmReceiver
         PSM.transferFrom(msg.sender, psmReceiver, _amount);
 
         /// @dev Emit event that Experience has been purchased for a specific NFT
-        emit EXP_Purchased(_nftID, _amount);
+        emit EXP_Purchased(_tokenID, _amount);
     }
 
-    /// @notice Caller can complete a quest for any Passel NFT to increase the NFT's Exploration Score
-    function doQuest(uint256 _nftID, uint256 _questID) external {}
+    /// @notice The caller can complete a quest for any Passel NFT to increase the NFT's Exploration Score
+    /// @dev The caller could do quests for NFTs of other owners if desired (e.g. sponsorship)
+    function doQuest(uint256 _tokenID, uint256 _questID) external {
+        // Checks
+        /// @dev Check if the NFT receiving the Explorer Score exists
+        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) revert InvalidNFT();
+
+        /// @dev Check that the questID is valid
+        if (_questID > passelQuests.QUESTS_AVAILABLE()) revert InvalidQuest();
+
+        address user = msg.sender;
+        uint256 score;
+
+        // Effects
+
+        // Interactions
+        /// @dev Execute the quest and receive the score if successful
+        score = passelQuests.quest(user, _tokenID, _questID);
+
+        /// @dev Increase the exploration score of the NFT if quest is successful
+        getExplorationScore[_tokenID] += score;
+    }
 }

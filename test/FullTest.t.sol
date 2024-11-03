@@ -464,21 +464,21 @@ contract FullTest is Test {
     }
 
     function testSuccess_setPasselQuests() public {
-        assertEq(passelExplorer.passelQuests(), address(0));
+        assertEq(address(passelExplorer.passelQuests()), address(0));
 
         vm.prank(psmSender);
         passelExplorer.setPasselQuests(Alice);
 
-        assertEq(passelExplorer.passelQuests(), Alice);
+        assertEq(address(passelExplorer.passelQuests()), Alice);
 
         vm.prank(psmSender);
         passelExplorer.setPasselQuests(address(0));
 
-        assertEq(passelExplorer.passelQuests(), address(0));
+        assertEq(address(passelExplorer.passelQuests()), address(0));
     }
 
     function testRevert_setPasselQuests() public {
-        assertEq(passelExplorer.passelQuests(), address(0));
+        assertEq(address(passelExplorer.passelQuests()), address(0));
 
         // Scenario 1: Caller is not authorized
         vm.startPrank(Alice);
@@ -494,7 +494,7 @@ contract FullTest is Test {
         passelExplorer.setPasselQuests(Alice);
         vm.stopPrank();
 
-        assertEq(passelExplorer.passelQuests(), address(0));
+        assertEq(address(passelExplorer.passelQuests()), address(0));
     }
 
     function testSuccess_buyExperience() public {}
