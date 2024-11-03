@@ -29,7 +29,6 @@ error PriceMismatch();
 error NotManager();
 error IsRevoked();
 error NullAddress();
-error InvalidNFT();
 
 error questComplete();
 error NotPasselExplorer();
@@ -497,7 +496,54 @@ contract FullTest is Test {
         assertEq(address(passelExplorer.passelQuests()), address(0));
     }
 
-    function testSuccess_buyExperience() public {}
+    function testSuccess_buyExperience() public {
+        helper_mintNFT_toAlice();
+
+        uint256 receiverBalance = psm.balanceOf(psmSender);
+
+        assertEq(passelExplorer.getExperience(0), 0);
+
+        uint256 expPurchased = 1e6;
+
+        // Scenario 1: Alice purchases EXP for her own NFT
+        vm.startPrank(Alice);
+        psm.approve(address(passelExplorer), 1e55);
+        passelExplorer.buyExperience(0, expPurchased);
+        vm.stopPrank();
+
+        assertEq(passelExplorer.getExperience(0), expPurchased);
+        assertEq(psm.balanceOf(psmSender), receiverBalance + expPurchased);
+
+        // Scenario 2: Bob purchases EXP for Alice's NFT
+        vm.startPrank(Bob);
+        psm.approve(address(passelExplorer), 1e55);
+        passelExplorer.buyExperience(0, expPurchased);
+        vm.stopPrank();
+
+        assertEq(passelExplorer.getExperience(0), expPurchased * 2);
+        assertEq(psm.balanceOf(psmSender), receiverBalance + (expPurchased * 2));
+    }
+
+    function testRevert_buyExperience() public {
+        helper_mintNFT_toAlice();
+        helper_mintNFT_toAlice();
+
+        assertEq(passelExplorer.getExperience(0), 0);
+        assertEq(passelExplorer.getExperience(1), 0);
+        assertEq(passelExplorer.getExperience(2), 0);
+
+        uint256 expPurchased = 1e6;
+
+        // Scenario 1: Alice purchases EXP for a non-existing NFT
+        vm.startPrank(Alice);
+        vm.expectRevert("ERC721: invalid token ID");
+        passelExplorer.buyExperience(2, expPurchased);
+        vm.stopPrank();
+
+        assertEq(passelExplorer.getExperience(0), 0);
+        assertEq(passelExplorer.getExperience(1), 0);
+        assertEq(passelExplorer.getExperience(2), 0);
+    }
 
     function testSuccess_doQuest() public {}
 }

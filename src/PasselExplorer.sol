@@ -11,7 +11,6 @@ import {IPasselQuests} from "./interfaces/IPasselQuests.sol";
 error NotManager();
 error IsRevoked();
 error NullAddress();
-error InvalidNFT();
 
 /// @title Storage contract for information related to Passel NFTs for the purpose of on-chain governance
 /// @author Possum Labs
@@ -86,7 +85,8 @@ contract PasselExplorer {
     function buyExperience(uint256 _tokenID, uint256 _amount) external {
         // Checks
         /// @dev Check if the NFT receiving the EXP exists
-        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) revert InvalidNFT();
+        /// @dev ownerOf reverts with error from ERC721 if ID does not exist
+        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) {}
 
         // Effects
         /// @dev Add the purchased Experience to the mapping related to the NFT
@@ -105,7 +105,8 @@ contract PasselExplorer {
     function doQuest(uint256 _tokenID, uint256 _questID) external {
         // Checks
         /// @dev Check if the NFT receiving the Explorer Score exists
-        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) revert InvalidNFT();
+        /// @dev ownerOf reverts with error from ERC721 if ID does not exist
+        if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) {}
 
         address user = msg.sender;
         uint256 score;
