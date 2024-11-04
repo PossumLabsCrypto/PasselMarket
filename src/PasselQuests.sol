@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ICoreV1} from "./interfaces/ICoreV1.sol";
 import {IPortalsV1} from "./interfaces/IPortalsV1.sol";
+import {IPortalsV2} from "./interfaces/IPortalsV2.sol";
 import {IPasselExplorer} from "./interfaces/IPasselExplorer.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -36,6 +37,7 @@ contract PasselQuests {
 
     ICoreV1 private constant CORE_V1 = ICoreV1(0xb12192f4E3AcCb5D33589Ed683701F69a272EA26);
     IPortalsV1 private constant PORTALS_V1 = IPortalsV1(0x24b7d3034C711497c81ed5f70BEE2280907Ea1Fa);
+    IPortalsV2 private constant PORTALS_V2_ETH = IPortalsV2(0xe771545aaDF6feC3815B982fe2294F7230C9c55b);
     IPasselExplorer private immutable PASSEL_EXPLORER;
 
     address public immutable PASSEL_EXPLORER_ADDRESS; // The explorer contract users interface with to level up their NFTs
@@ -76,7 +78,9 @@ contract PasselQuests {
         uint256 requiredForScore2;
 
         // Effects
-        _questEffects(_tokenID, _questID);
+        /// @dev Update the mapping signalling that this quest has been completed
+        /// @dev Keep quest 7 open (false) - it is the only quest that can be executed multiple times
+        isQuestCompleted[_tokenID][_questID] = (_questID == 7) ? false : true;
 
         // Interactions
         /// @dev Quest verification / execution
@@ -122,14 +126,14 @@ contract PasselQuests {
             score = _questCondition(requiredForScore1, requiredForScore2, distributedCF);
         }
 
-        /// @dev Quest of accumulating surplus PE in the HLP PortalV1 (internal PE balance check)
+        /// @dev Quest of accumulating surplus PE in the ETH PortalV2 (internal PE balance check)
         if (_questID == 4) {
             /// @dev set quest specific parameters
-            requiredForScore1 = 10000 * 1e18; // 10k PE
-            requiredForScore2 = requiredForScore1 * 10; // 100k PE
+            requiredForScore1 = 1 * 1e18; // 1 PE
+            requiredForScore2 = requiredForScore1 * 10; // 10 PE
 
-            /// @dev Get quest specific external data
-            (,,,, uint256 maxStakeDebt, uint256 portalEnergy,) = PORTALS_V1.getUpdateAccount(_user, 0);
+            /// @dev Get quest specific external data from the ETH Portal
+            (,,, uint256 maxStakeDebt, uint256 portalEnergy,,) = PORTALS_V2_ETH.getUpdateAccount(_user, 0, true);
             uint256 surplusPE = (portalEnergy > maxStakeDebt) ? portalEnergy - maxStakeDebt : 0;
 
             /// @dev Evaluate quest condition and assign the score (1 or 2 or revert)
@@ -139,8 +143,8 @@ contract PasselQuests {
         /// @dev Quest of creating / owning PE-ETH tokens (ERC20 balance check)
         if (_questID == 5) {
             /// @dev set quest specific parameters
-            requiredForScore1 = 10 * 1e18; // 10 PE-ETH
-            requiredForScore2 = requiredForScore1 * 10; // 100 PE-ETH
+            requiredForScore1 = 1 * 1e18; // 1 PE-ETH
+            requiredForScore2 = requiredForScore1 * 10; // 10 PE-ETH
 
             /// @dev Get quest specific external data
             uint256 balancePE_ETH = PE_ETH.balanceOf(_user);
@@ -153,7 +157,7 @@ contract PasselQuests {
         if (_questID == 6) {
             /// @dev set parameters and score
             uint256 convertAmountRequired = 100000 * 1e18; // 100k PSM
-            score = 2;
+            score = 1;
 
             /// @dev transfer PSM from the user to this contract
             PSM.transferFrom(_user, address(this), convertAmountRequired);
@@ -204,23 +208,6 @@ contract PasselQuests {
                 revert QuestCondition();
             }
             score = 1;
-        }
-    }
-
-    function _questEffects(uint256 _tokenID, uint256 _questID) private {
-        /// @dev Update the mapping signalling that this quest has been completed
-        /// @dev Keep quest 7 open - it is the only quest that can be executed multiple times
-        isQuestCompleted[_tokenID][_questID] = (_questID == 7) ? false : true;
-
-        /// @dev Update the quests array for the related getCompletedQuests mapping. Check if the array exists for this NFT ID
-        if (getCompletedQuests[_tokenID].length == 0) {
-            /// @dev If the array doesn't exist, create a new array with the new value
-            getCompletedQuests[_tokenID] = new uint256[](_questID);
-            getCompletedQuests[_tokenID][0] = _questID;
-        } else {
-            /// @dev If the array exists, append the new value
-            /// @dev Quest 7 is appended each time it is executed but remains executable
-            getCompletedQuests[_tokenID].push(_questID);
         }
     }
 }

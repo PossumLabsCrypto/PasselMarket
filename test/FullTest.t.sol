@@ -14,6 +14,64 @@ import {PasselQuests} from "src/PasselQuests.sol";
 // import {DeployPasselNFT} from "script/DeployPasselNFT.s.sol";
 // import {MintPasselBatch} from "script/MintPasselBatch.s.sol";
 
+interface ICoreV1_FOR_TEST {
+    struct Stake {
+        uint256 stakedBalance;
+        uint256 commitmentEnd;
+        uint256 reservedRewards;
+        uint256 storedCoreFragments;
+        uint256 lastDistributionTime;
+        uint256 coreFragmentsAPR;
+    }
+
+    function stakes(address _staker) external view returns (Stake memory);
+    function fragmentsDistributed(address _staker) external view returns (uint256);
+
+    function stake(uint256 _amount, uint256 _duration) external;
+    function distributeCoreFragments(address _destination, uint256 _amount) external;
+    function getFragments(address _user) external view returns (uint256);
+}
+
+// Contains additional functions that are needed to construct test cases but not in production
+interface IPortalsV1_FOR_TEST {
+    function claimRewardsHLPandHMX() external;
+    function convert(address _token, uint256 _minReceived, uint256 _deadline) external;
+
+    function getUpdateAccount(address _user, uint256 _amount)
+        external
+        view
+        returns (
+            address user,
+            uint256 lastUpdateTime,
+            uint256 lastMaxLockDuration,
+            uint256 stakedBalance,
+            uint256 maxStakeDebt,
+            uint256 portalEnergy,
+            uint256 availableToWithdraw
+        );
+}
+
+// Contains additional functions that are needed to construct test cases but not in production
+interface IPortalsV2_FOR_TEST {
+    function getUpdateAccount(address _user, uint256 _amount, bool _isPositiveAmount)
+        external
+        view
+        returns (
+            uint256 lastUpdateTime,
+            uint256 lastMaxLockDuration,
+            uint256 stakedBalance,
+            uint256 maxStakeDebt,
+            uint256 portalEnergy,
+            uint256 availableToWithdraw,
+            uint256 portalEnergyTokensRequired
+        );
+
+    function buyPortalEnergy(address _recipient, uint256 _amountInputPSM, uint256 _minReceived, uint256 _deadline)
+        external;
+
+    function mintPortalEnergyToken(address _recipient, uint256 _amount) external;
+}
+
 // ============================================
 // ==              CUSTOM ERRORS             ==
 // ============================================
@@ -29,12 +87,17 @@ error PriceMismatch();
 error NotManager();
 error IsRevoked();
 error NullAddress();
+error QuestsDisabled();
+error MaximumScoreReached();
 
-error questComplete();
+error InvalidQuest();
+error QuestComplete();
 error NotPasselExplorer();
+error QuestCondition();
 
 contract FullTest is Test {
     address private constant PSM_ADDRESS = 0x17A8541B82BF67e10B0874284b4Ae66858cb1fd5;
+    address private constant PE_ETH_ADDRESS = 0xA9Ee3b373843008a56178Fc3047fbD1C145c5a12;
 
     // prank addresses
     address payable Alice = payable(0x46340b20830761efd32832A74d7169B29FEB9758);
@@ -43,6 +106,7 @@ contract FullTest is Test {
 
     // Token Instances
     IERC20 psm = IERC20(PSM_ADDRESS);
+    IERC20 peETH = IERC20(PE_ETH_ADDRESS);
 
     // Passel NFT Collection
     PasselNFT public passelNFT;
@@ -55,6 +119,11 @@ contract FullTest is Test {
 
     // PasselQuests
     PasselQuests public passelQuests;
+
+    // Possum Protocols
+    ICoreV1_FOR_TEST public constant CORE_V1 = ICoreV1_FOR_TEST(0xb12192f4E3AcCb5D33589Ed683701F69a272EA26);
+    IPortalsV1_FOR_TEST public constant PORTALS_V1 = IPortalsV1_FOR_TEST(0x24b7d3034C711497c81ed5f70BEE2280907Ea1Fa);
+    IPortalsV2_FOR_TEST public constant PORTALS_V2 = IPortalsV2_FOR_TEST(0xe771545aaDF6feC3815B982fe2294F7230C9c55b);
 
     // PSM Treasury
     address psmSender = 0xAb845D09933f52af5642FC87Dd8FBbf553fd7B33;
@@ -71,7 +140,7 @@ contract FullTest is Test {
     //////////////////////////////////////
     function setUp() public {
         // Create main net fork
-        vm.createSelectFork({urlOrAlias: "alchemy_arbitrum_api", blockNumber: 210000000});
+        vm.createSelectFork({urlOrAlias: "alchemy_arbitrum_api", blockNumber: 260000000});
 
         // Create contract instances
         passelNFT = new PasselNFT("Possum Passel", "Passel", nftMinter);
@@ -120,6 +189,37 @@ contract FullTest is Test {
     function helper_revokeManager() public {
         vm.prank(psmSender);
         passelExplorer.revokeManager();
+    }
+
+    function helper_setQuests() public {
+        vm.prank(psmSender);
+        passelExplorer.setPasselQuests(address(passelQuests));
+    }
+
+    function helper_stake_2M_PSM_inCore() public {
+        psm.approve(address(CORE_V1), 1e55);
+        CORE_V1.stake(2000000 * 1e18, 31536000); // stake 2M for 1 year
+    }
+
+    function helper_stake_200k_PSM_inCore() public {
+        psm.approve(address(CORE_V1), 1e55);
+        CORE_V1.stake(200000 * 1e18, 31536000); // stake 200k for 1 year
+    }
+
+    function helper_pass1Year() public {
+        vm.warp(block.timestamp + 31536000);
+    }
+
+    function helper_verifyInitialState(uint256 _questID) public view {
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, _questID);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, _questID);
+        assertFalse(isCompleted_NFT0);
+        assertFalse(isCompleted_NFT2);
+
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        assertEq(explorationScore_NFT0, 0);
+        assertEq(explorationScore_NFT2, 0);
     }
 
     //////////////////////////////////////
@@ -511,6 +611,7 @@ contract FullTest is Test {
         passelExplorer.buyExperience(0, expPurchased);
         vm.stopPrank();
 
+        // verify state changes of Scenario 1
         assertEq(passelExplorer.getExperience(0), expPurchased);
         assertEq(psm.balanceOf(psmSender), receiverBalance + expPurchased);
 
@@ -520,6 +621,7 @@ contract FullTest is Test {
         passelExplorer.buyExperience(0, expPurchased);
         vm.stopPrank();
 
+        // verify state changes of Scenario 2
         assertEq(passelExplorer.getExperience(0), expPurchased * 2);
         assertEq(psm.balanceOf(psmSender), receiverBalance + (expPurchased * 2));
     }
@@ -545,5 +647,353 @@ contract FullTest is Test {
         assertEq(passelExplorer.getExperience(2), 0);
     }
 
-    function testSuccess_doQuest() public {}
+    function testSuccess_doQuest_1() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 1;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice has > 1M PSM balance (Score 2)
+        vm.startPrank(Alice);
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+
+        assertEq(explorationScore_NFT0, 2);
+        assertTrue(isCompleted_NFT0);
+
+        //Scenario 2: Bob has 200k PSM (Score 1)
+        uint256 amountRemain = 200000 * 1e18; // 200k PSM
+
+        vm.startPrank(Bob);
+        psm.transfer(psmSender, psmStartAmount - amountRemain); // reduce balance to 200k PSM
+        passelExplorer.doQuest(2, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, questID);
+
+        assertEq(explorationScore_NFT2, 1);
+        assertTrue(isCompleted_NFT2);
+    }
+
+    function testSuccess_doQuest_2() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 2;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice stakes 2M PSM in Core (Score 2)
+        vm.startPrank(Alice);
+        helper_stake_2M_PSM_inCore();
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+
+        assertEq(explorationScore_NFT0, 2);
+        assertTrue(isCompleted_NFT0);
+
+        //Scenario 2: Bob stakes 200k PSM in Core (Score 1)
+        vm.startPrank(Bob);
+        helper_stake_200k_PSM_inCore();
+        passelExplorer.doQuest(2, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, questID);
+
+        assertEq(explorationScore_NFT2, 1);
+        assertTrue(isCompleted_NFT2);
+    }
+
+    function testSuccess_doQuest_3() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 3;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice stakes 2M PSM in Core (Score 2), pass 1 year, distribute CF
+        uint256 distributedCF = CORE_V1.fragmentsDistributed(Alice);
+        assertEq(distributedCF, 0);
+
+        vm.startPrank(Alice);
+        helper_stake_2M_PSM_inCore();
+        helper_pass1Year();
+
+        uint256 aliceFragments = CORE_V1.getFragments(Alice);
+        CORE_V1.distributeCoreFragments(psmSender, aliceFragments);
+
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+        distributedCF = CORE_V1.fragmentsDistributed(Alice);
+
+        assertEq(explorationScore_NFT0, 2);
+        assertTrue(isCompleted_NFT0);
+        assertTrue(distributedCF >= 1000000 * 1e18);
+
+        // Scenario 2: Bob stakes 200k PSM in Core (Score 1)
+        vm.startPrank(Bob);
+        helper_stake_200k_PSM_inCore();
+        helper_pass1Year();
+
+        uint256 bobFragments = CORE_V1.getFragments(Bob);
+        CORE_V1.distributeCoreFragments(psmSender, bobFragments);
+
+        passelExplorer.doQuest(2, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, questID);
+        distributedCF = CORE_V1.fragmentsDistributed(Bob);
+
+        assertEq(explorationScore_NFT2, 1);
+        assertTrue(isCompleted_NFT2);
+        assertTrue(distributedCF >= 100000 * 1e18);
+    }
+
+    function testSuccess_doQuest_4() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 4;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice buys Portal Energy in the ETH Portal using 7M PSM (Score 2)
+        uint256 portalEnergyAlice;
+        uint256 amountSpendForAlice = 7000000 * 1e18; // 7M PSM
+        uint256 minReceivedAlice = 10 * 1e18; // minimum PE purchased
+
+        vm.startPrank(Alice);
+        psm.approve(address(PORTALS_V2), 1e55); // Approve the ETH Portal to spend PSM
+        PORTALS_V2.buyPortalEnergy(Alice, amountSpendForAlice, minReceivedAlice, block.timestamp); // Spend 7M PSM to acquire PE
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+        (,,,, portalEnergyAlice,,) = PORTALS_V2.getUpdateAccount(Alice, 0, true);
+
+        assertEq(explorationScore_NFT0, 2);
+        assertTrue(isCompleted_NFT0);
+        assertTrue(portalEnergyAlice >= 10 * 1e18);
+
+        // Scenario 2: Alice buys Portal Energy for Bob in the ETH Portal using 3M PSM. Bob Executes the Quest (Score 1)
+        uint256 portalEnergyBob;
+        uint256 amountSpendForBob = 3000000 * 1e18; // 3M PSM
+        uint256 minReceivedBob = 1 * 1e18; // minimum PE purchased
+
+        vm.prank(Alice);
+        PORTALS_V2.buyPortalEnergy(Bob, amountSpendForBob, minReceivedBob, block.timestamp); // Spend 3M PSM to acquire PE for Bob
+
+        vm.prank(Bob);
+        passelExplorer.doQuest(2, questID);
+
+        // verify state changes of Scenario 2
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, questID);
+        (,,,, portalEnergyBob,,) = PORTALS_V2.getUpdateAccount(Bob, 0, true);
+
+        assertEq(explorationScore_NFT2, 1);
+        assertTrue(isCompleted_NFT2);
+        assertTrue(portalEnergyBob >= 1 * 1e18);
+    }
+
+    function testSuccess_doQuest_5() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 5;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice buys PE-ETH with PSM and mints 10 of them as PE tokens (Score 2)
+        uint256 amountSpendForAlice = 7000000 * 1e18; // 7M PSM
+        uint256 minReceivedAlice = 10 * 1e18; // minimum PE purchased
+
+        vm.startPrank(Alice);
+
+        psm.approve(address(PORTALS_V2), 1e55); // Approve the ETH Portal to spend PSM
+        PORTALS_V2.buyPortalEnergy(Alice, amountSpendForAlice, minReceivedAlice, block.timestamp); // Spend 7M PSM to acquire PE
+        PORTALS_V2.mintPortalEnergyToken(Alice, minReceivedAlice);
+
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+        uint256 peTokenBalanceAlice = peETH.balanceOf(Alice);
+
+        assertEq(explorationScore_NFT0, 2);
+        assertTrue(isCompleted_NFT0);
+        assertEq(peTokenBalanceAlice, 10 * 1e18); // 10 PE tokens
+
+        // Scenario 2: Alice buys Portal Energy for Bob in the ETH Portal using 3M PSM. Bob mints them as tokens and completes the Quest (Score 1)
+        uint256 amountSpendForBob = 3000000 * 1e18; // 3M PSM
+        uint256 minReceivedBob = 1 * 1e18; // minimum PE purchased
+
+        vm.prank(Alice);
+        PORTALS_V2.buyPortalEnergy(Bob, amountSpendForBob, minReceivedBob, block.timestamp); // Spend 3M PSM to acquire PE for Bob
+
+        vm.startPrank(Bob);
+        PORTALS_V2.mintPortalEnergyToken(Bob, minReceivedBob);
+        passelExplorer.doQuest(2, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 2
+        uint256 explorationScore_NFT2 = passelExplorer.getExplorationScore(2);
+        bool isCompleted_NFT2 = passelQuests.isQuestCompleted(2, questID);
+        uint256 peTokenBalanceBob = peETH.balanceOf(Bob);
+
+        assertEq(explorationScore_NFT2, 1);
+        assertTrue(isCompleted_NFT2);
+        assertEq(peTokenBalanceBob, 1 * 1e18); // 1 PE token
+    }
+
+    function testSuccess_doQuest_6() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+        helper_setQuests();
+
+        uint256 questID = 6;
+
+        // Verify initial state
+        helper_verifyInitialState(questID);
+
+        // Scenario 1: Alice executes convert via the quest function
+        uint256 amountForConvert = 100000 * 1e18; // 100k PSM
+
+        vm.startPrank(Alice);
+        psm.approve(address(passelQuests), 1e55); // Approve the HLP Portal to spend PSM
+        passelExplorer.doQuest(0, questID);
+        vm.stopPrank();
+
+        // verify state changes of Scenario 1
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        bool isCompleted_NFT0 = passelQuests.isQuestCompleted(0, questID);
+        uint256 psmBalanceAlice = psm.balanceOf(Alice);
+
+        assertEq(explorationScore_NFT0, 1);
+        assertTrue(isCompleted_NFT0);
+        assertEq(psmBalanceAlice, psmStartAmount - amountForConvert); // 100k PSM is deducted / sent to Portal
+    }
+
+    function testRevert_doQuest() public {
+        helper_mintNFT_toAlice(); // ID 0
+        helper_mintNFT_toAlice(); // ID 1
+        helper_mintNFT_toBob(); // ID 2
+
+        // Scenario 1: Alice tries to do a quest while quest contract is not set
+        vm.startPrank(Alice);
+        vm.expectRevert(QuestsDisabled.selector);
+        passelExplorer.doQuest(0, 1);
+        vm.stopPrank();
+
+        // set the quest contract
+        helper_setQuests();
+
+        // Scenario 2: Alice tries to do quest for non-existing NFT
+        vm.startPrank(Alice);
+        vm.expectRevert("ERC721: invalid token ID");
+        passelExplorer.doQuest(3, 1);
+        vm.stopPrank();
+
+        // Scenario 3: Alice tries to do a quest that doesn't exist in the quest contract
+        vm.startPrank(Alice);
+        vm.expectRevert(InvalidQuest.selector);
+        passelExplorer.doQuest(0, 8);
+        vm.stopPrank();
+
+        // Scenario 4: Bob does not meet the quest condition (PSM balance)
+        vm.startPrank(Bob);
+        psm.transfer(psmSender, psmStartAmount); // reduce balance to 0 PSM
+        vm.expectRevert(QuestCondition.selector);
+        passelExplorer.doQuest(2, 1);
+        vm.stopPrank();
+
+        // Scenario 5: Alice tries to repeat a non-repeatable quest (1)
+        vm.startPrank(Alice);
+        passelExplorer.doQuest(0, 1);
+        vm.expectRevert(QuestComplete.selector);
+        passelExplorer.doQuest(0, 1);
+        vm.stopPrank();
+
+        // Scenario 6: Alice reaches the maximum Explorer Score and tries to get more Points
+        vm.startPrank(Alice);
+        // Alice got the first 2 Scores from having a PSM balance in Scenario 5
+        psm.approve(address(passelQuests), 1e55); // approve PSM to be transferred by the passelQuest contract
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7);
+        passelExplorer.doQuest(0, 7); // get the remaining 8 Scores from spending 4M PSM
+        vm.expectRevert(MaximumScoreReached.selector);
+        passelExplorer.doQuest(0, 7);
+        vm.stopPrank();
+
+        // Scenario 7: Bob runs out of PSM for the repeatable quest after successful executions
+        vm.prank(psmSender);
+        psm.transfer(Bob, psmSendAmount); // Increase Bob's balance to 1M
+
+        vm.startPrank(Bob);
+        psm.approve(address(passelQuests), 1e55); // approve PSM to be spent by the quest contract
+        passelExplorer.doQuest(2, 7);
+        passelExplorer.doQuest(2, 7);
+        vm.expectRevert("ERC20: transfer amount exceeds balance");
+        passelExplorer.doQuest(2, 7);
+        vm.stopPrank();
+    }
+
+    function testRevert_quest() public {
+        helper_mintNFT_toAlice();
+
+        uint256 questID = 1;
+        uint256 explorationScore_NFT0 = passelExplorer.getExplorationScore(0);
+        assertEq(explorationScore_NFT0, 0);
+
+        // Try to call the quest contract directly (not via Explorer)
+        vm.startPrank(Alice);
+        vm.expectRevert(NotPasselExplorer.selector);
+        passelQuests.quest(Alice, 0, questID);
+    }
 }

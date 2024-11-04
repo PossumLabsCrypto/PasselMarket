@@ -11,6 +11,8 @@ import {IPasselQuests} from "./interfaces/IPasselQuests.sol";
 error NotManager();
 error IsRevoked();
 error NullAddress();
+error QuestsDisabled();
+error MaximumScoreReached();
 
 /// @title Storage contract for information related to Passel NFTs for the purpose of on-chain governance
 /// @author Possum Labs
@@ -104,9 +106,16 @@ contract PasselExplorer {
     /// @dev The caller could do quests for NFTs of other owners if desired (e.g. sponsorship)
     function doQuest(uint256 _tokenID, uint256 _questID) external {
         // Checks
+        /// @dev Check if quests are enabled (quest address is set)
+        if (address(passelQuests) == address(0)) revert QuestsDisabled();
+
         /// @dev Check if the NFT receiving the Explorer Score exists
         /// @dev ownerOf reverts with error from ERC721 if ID does not exist
         if (PASSEL_NFT.ownerOf(_tokenID) == address(0)) {}
+
+        /// @dev Check if the NFT has already reached the maximum Explorer Score
+        uint256 currentExplorerScore = getExplorationScore[_tokenID];
+        if (currentExplorerScore == MAX_EXPLORATION_SCORE) revert MaximumScoreReached();
 
         address user = msg.sender;
         uint256 score;
@@ -116,8 +125,11 @@ contract PasselExplorer {
         // Interactions
         /// @dev Execute the quest and receive the score if successful
         score = passelQuests.quest(user, _tokenID, _questID);
+        uint256 newScore = (currentExplorerScore + score >= MAX_EXPLORATION_SCORE)
+            ? MAX_EXPLORATION_SCORE
+            : currentExplorerScore + score;
 
-        /// @dev Increase the exploration score of the NFT if quest is successful
-        getExplorationScore[_tokenID] += score;
+        /// @dev Set the new Explorer Score
+        getExplorationScore[_tokenID] = newScore;
     }
 }
