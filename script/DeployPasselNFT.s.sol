@@ -16,7 +16,7 @@ contract DeployPasselNFT is Script {
 
         // Configure optimizer settings
         vm.store(address(this), bytes32("optimizer"), bytes32("true"));
-        vm.store(address(this), bytes32("optimizerRuns"), bytes32(uint256(1000)));
+        vm.store(address(this), bytes32("optimizerRuns"), bytes32(uint256(1800)));
 
         // deploy the NFT contract
         PasselNFT passelNFT = new PasselNFT(_name, _symbol, nftMinter);
@@ -26,4 +26,4 @@ contract DeployPasselNFT is Script {
     }
 }
 
-// forge script script/DeployPasselNFT.s.sol --rpc-url $ARB_MAINNET_URL --private-key $PRIVATE_KEY --broadcast --verify --verifier etherscan --etherscan-api-key $ARBISCAN_API_KEY --optimize --optimizer-runs 1000
+// forge script script/DeployPasselNFT.s.sol --rpc-url $ARB_MAINNET_URL --private-key $PRIVATE_KEY --broadcast --verify --verifier etherscan --etherscan-api-key $ARBISCAN_API_KEY --optimize --optimizer-runs 1800
