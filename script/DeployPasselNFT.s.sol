@@ -5,8 +5,8 @@ import {Script, console} from "lib/forge-std/src/Script.sol";
 import {PasselNFT} from "src/PasselNFT.sol";
 
 contract DeployPasselNFT is Script {
-    string _name = "Possum Passel";
-    string _symbol = "Passel";
+    string _name = "The Possum Passel";
+    string _symbol = "Possum";
     address nftMinter = 0xbFF0b8CcD7ebA169107bbE72426dB370407C8f2D;
 
     function setUp() public {}
