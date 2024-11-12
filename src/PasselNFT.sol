@@ -8,7 +8,6 @@ import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/
 //    ERRORS
 // ===================================
 error NotMinter();
-error CollectionIncomplete();
 error MintingDisabled();
 
 /// @title Possum Passel NFT Collection
@@ -34,7 +33,7 @@ contract PasselNFT is ERC721URIStorage {
     ///@notice Enable the minter to mint NFTs up to the minting cap
     function mint(address _recipient, string memory metadataURI) external returns (uint256 nftID) {
         if (msg.sender != minter) revert NotMinter();
-        if (mintingDisabled == true) revert MintingDisabled();
+        if (mintingDisabled) revert MintingDisabled();
 
         _safeMint(_recipient, totalSupply);
         _setTokenURI(totalSupply, metadataURI);

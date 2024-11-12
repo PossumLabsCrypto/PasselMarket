@@ -65,11 +65,13 @@ contract PasselMarket is ERC721Holder {
         /// @dev if NFT gets delisted, reset other related information to default values
         /// @dev Only update if values change to save gas
         if (_getListed == false) {
+            /// @dev Cancel the token sale (delist)
             isListedForSale[_tokenID] = false;
             listingPrices[_tokenID] = 0;
             ownedBy[_tokenID] = address(0);
         } else {
-            if (_getListed != isListedForSale[_tokenID]) isListedForSale[_tokenID] = _getListed;
+            /// @dev List the token for sale or adjust the price of an existing sell order
+            if (!isListedForSale[_tokenID]) isListedForSale[_tokenID] = true;
             if (_price != listingPrices[_tokenID]) listingPrices[_tokenID] = _price;
             if (msg.sender != ownedBy[_tokenID]) ownedBy[_tokenID] = msg.sender;
         }
@@ -94,7 +96,7 @@ contract PasselMarket is ERC721Holder {
     function buyNFT(uint256 _tokenID, uint256 maxSpend) external {
         // Checks
         /// @dev Ensure that the NFT ID is listed for sale
-        if (isListedForSale[_tokenID] == false) revert NotListedForSale();
+        if (!isListedForSale[_tokenID]) revert NotListedForSale();
 
         /// @dev Prevent caller from buying their own NFT
         if (msg.sender == ownedBy[_tokenID]) revert CallerIsOwner();

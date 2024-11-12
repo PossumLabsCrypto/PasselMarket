@@ -9,7 +9,6 @@ import {IPasselQuests} from "./interfaces/IPasselQuests.sol";
 //    ERRORS
 // ===================================
 error NotManager();
-error IsRevoked();
 error NullAddress();
 error QuestsDisabled();
 error MaximumScoreReached();

@@ -2,7 +2,6 @@
 pragma solidity =0.8.19;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ICoreV1} from "./interfaces/ICoreV1.sol";
 import {IPortalsV1} from "./interfaces/IPortalsV1.sol";
 import {IPortalsV2} from "./interfaces/IPortalsV2.sol";
@@ -43,7 +42,6 @@ contract PasselQuests {
     address public immutable PASSEL_EXPLORER_ADDRESS; // The explorer contract users interface with to level up their NFTs
     uint256 public constant QUESTS_AVAILABLE = 7;
 
-    mapping(uint256 nftID => uint256[] quests) public getCompletedQuests;
     mapping(uint256 nftID => mapping(uint256 questID => bool completed)) public isQuestCompleted;
 
     // ===================================
@@ -52,21 +50,16 @@ contract PasselQuests {
     event QuestCompleted(uint256 indexed nftID, uint256 questID, uint256 score);
 
     // ===================================
-    //    MODIFIERS
-    // ===================================
-    modifier onlyExplorer() {
-        if (msg.sender != PASSEL_EXPLORER_ADDRESS) {
-            revert NotPasselExplorer();
-        }
-        _;
-    }
-
-    // ===================================
     //    FUNCTIONS - quests
     // ===================================
     /// @notice Execute or verify the quest condition, called by doQuest of the PasselExplorer
-    function quest(address _user, uint256 _tokenID, uint256 _questID) external onlyExplorer returns (uint256 score) {
+    function quest(address _user, uint256 _tokenID, uint256 _questID) external returns (uint256 score) {
         // Checks
+        /// @dev Check that the caller is the PasselExplorer contract only
+        if (msg.sender != PASSEL_EXPLORER_ADDRESS) {
+            revert NotPasselExplorer();
+        }
+
         /// @dev Check that the questID is valid
         if (_questID > QUESTS_AVAILABLE) revert InvalidQuest();
 
